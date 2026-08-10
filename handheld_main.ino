@@ -7,25 +7,25 @@
 #include "inputs.h"
 
 // --- Hardware Pin Definitions ---
-#define ENC1_A        19
-#define ENC1_B        21
-#define ENC1_SW       22  // Engine 1 Direction Toggle
+const uint8_t PIN_ENCODER_1_A = 19;
+const uint8_t PIN_ENCODER_1_B = 21;
+const uint8_t PIN_ENCODER_1_SWITCH = 22;  // Engine 1 Direction Toggle
 
-#define ENC2_A        4
-#define ENC2_B        0
-#define ENC2_SW       2   // Engine 2 Direction Toggle
+const uint8_t PIN_ENCODER_2_A = 4;
+const uint8_t PIN_ENCODER_2_B = 0;
+const uint8_t PIN_ENCODER_2_SWITCH = 2;   // Engine 2 Direction Toggle
 
-#define BTN_SELECT_E1 15  // Route Numpad/DC Switch to Engine 1
-#define BTN_SELECT_E2 26  // Route Numpad/DC Switch to Engine 2
+const uint8_t PIN_BUTTON_SELECT_E1 = 15;  // Route Numpad/DC Switch to Engine 1
+const uint8_t PIN_BUTTON_SELECT_E2 = 26;  // Route Numpad/DC Switch to Engine 2
 
-// NOTE: GPIO16 is used by the OLED's OLED_DC line (see ui.cpp) -- it was
+// NOTE: GPIO16 is used by the OLED's PIN_OLED_DATA_COMMAND line (see ui.cpp) -- it was
 // previously double-booked with this switch, which would corrupt display
 // output whenever the switch was toggled. Moved to GPIO36, an input-only
 // pin with no internal pull resistor, same as the E-stop pins below.
-#define BTN_DC_TOGGLE 36  // Physical SPST/SPDT Switch for DC / DCC Mode (needs external 10k pull-up resistor)
+const uint8_t PIN_SWITCH_DC_TOGGLE = 36;  // Physical SPST/SPDT Switch for DC / DCC Mode (needs external 10k pull-up resistor)
 
-#define BTN_ESTOP_E1  34  // E-Stop Engine 1 (Needs external 10k pull-up resistor)
-#define BTN_ESTOP_E2  35  // E-Stop Engine 2 (Needs external 10k pull-up resistor)
+const uint8_t PIN_BUTTON_ESTOP_E1 = 34;   // E-Stop Engine 1 (Needs external 10k pull-up resistor)
+const uint8_t PIN_BUTTON_ESTOP_E2 = 35;   // E-Stop Engine 2 (Needs external 10k pull-up resistor)
 
 // --- Memory for Restoring Addresses when Exiting DC Mode ---
 static uint16_t saved_dcc_addr[2] = {4401, 8302};
@@ -35,8 +35,17 @@ static int8_t dc_mode_owner_idx = -1; // Which engine (0/1) the DC switch curren
 const byte ROWS = 4;
 const byte COLS = 3;
 
-byte rowPins[ROWS] = {13, 12, 14, 27};
-byte colPins[COLS] = {32, 33, 25};
+const uint8_t PIN_KEYPAD_ROW_1 = 13;
+const uint8_t PIN_KEYPAD_ROW_2 = 12;
+const uint8_t PIN_KEYPAD_ROW_3 = 14;
+const uint8_t PIN_KEYPAD_ROW_4 = 27;
+
+const uint8_t PIN_KEYPAD_COL_1 = 32;
+const uint8_t PIN_KEYPAD_COL_2 = 33;
+const uint8_t PIN_KEYPAD_COL_3 = 25;
+
+byte rowPins[ROWS] = {PIN_KEYPAD_ROW_1, PIN_KEYPAD_ROW_2, PIN_KEYPAD_ROW_3, PIN_KEYPAD_ROW_4};
+byte colPins[COLS] = {PIN_KEYPAD_COL_1, PIN_KEYPAD_COL_2, PIN_KEYPAD_COL_3};
 
 char keys[ROWS][COLS] = {
   {'1', '2', '3'},
@@ -66,27 +75,27 @@ static const unsigned long DEBUG_HOLD_MS = 1500;
 
 void setup() {
   // Pin Modes Setup
-  pinMode(ENC1_SW, INPUT_PULLUP);
-  pinMode(ENC2_SW, INPUT_PULLUP);
-  pinMode(BTN_SELECT_E1, INPUT_PULLUP);
-  pinMode(BTN_SELECT_E2, INPUT_PULLUP);
+  pinMode(PIN_ENCODER_1_SWITCH, INPUT_PULLUP);
+  pinMode(PIN_ENCODER_2_SWITCH, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_SELECT_E1, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_SELECT_E2, INPUT_PULLUP);
   // GPIO34/35/36 are input-only pins with no internal pull resistor -- INPUT_PULLUP
   // here would silently do nothing. These three all need an external 10k pull-up
   // to 3.3V per the hardware notes.
-  pinMode(BTN_DC_TOGGLE, INPUT);
-  pinMode(BTN_ESTOP_E1, INPUT);
-  pinMode(BTN_ESTOP_E2, INPUT);
+  pinMode(PIN_SWITCH_DC_TOGGLE, INPUT);
+  pinMode(PIN_BUTTON_ESTOP_E1, INPUT);
+  pinMode(PIN_BUTTON_ESTOP_E2, INPUT);
 
   // Debounce + chatter/fault detection for every button and switch.
   // Tune debounceMs / chatterThreshold here if a particular switch is noisier
   // or bouncier than the defaults expect.
-  inEnc1Sw.begin(ENC1_SW);
-  inEnc2Sw.begin(ENC2_SW);
-  inSel1.begin(BTN_SELECT_E1);
-  inSel2.begin(BTN_SELECT_E2);
-  inDcToggle.begin(BTN_DC_TOGGLE, 40); // slightly longer debounce: mechanical toggle switch
-  inEstop1.begin(BTN_ESTOP_E1);
-  inEstop2.begin(BTN_ESTOP_E2);
+  inEnc1Sw.begin(PIN_ENCODER_1_SWITCH);
+  inEnc2Sw.begin(PIN_ENCODER_2_SWITCH);
+  inSel1.begin(PIN_BUTTON_SELECT_E1);
+  inSel2.begin(PIN_BUTTON_SELECT_E2);
+  inDcToggle.begin(PIN_SWITCH_DC_TOGGLE, 40); // slightly longer debounce: mechanical toggle switch
+  inEstop1.begin(PIN_BUTTON_ESTOP_E1);
+  inEstop2.begin(PIN_BUTTON_ESTOP_E2);
 
   initUI(); // Initialize LGFX OLED display first so we're not staring at a blank screen
   showConnectingScreen();
@@ -95,8 +104,8 @@ void setup() {
 
   // Hardware Encoder Setup
   ESP32Encoder::useInternalWeakPullResistors = puType::up;
-  enc1.attachHalfQuad(ENC1_A, ENC1_B);
-  enc2.attachHalfQuad(ENC2_A, ENC2_B);
+  enc1.attachHalfQuad(PIN_ENCODER_1_A, PIN_ENCODER_1_B);
+  enc2.attachHalfQuad(PIN_ENCODER_2_A, PIN_ENCODER_2_B);
   enc1.setCount(0);
   enc2.setCount(0);
 

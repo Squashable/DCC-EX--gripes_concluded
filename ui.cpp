@@ -16,19 +16,19 @@
 // the board's default SPI pins automatically):
 //   OLED_SCK  -> GPIO18 (VSPI SCK)
 //   OLED_MOSI -> GPIO23 (VSPI MOSI)
-#define OLED_CS   5
-#define OLED_DC   16
-#define OLED_RST  17
+const uint8_t PIN_OLED_CHIP_SELECT = 5;
+const uint8_t PIN_OLED_DATA_COMMAND = 16;
+const uint8_t PIN_OLED_RESET = 17;
 
 // "_F_" = full frame buffer (256x64 mono = 2KB RAM, fine on ESP32) rather than
 // the page-buffer variants, so we can draw the whole UI then push it in one go
 // with clearBuffer()/sendBuffer(), matching how the old sprite-based code worked.
-U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R0, /* cs=*/ OLED_CS, /* dc=*/ OLED_DC, /* reset=*/ OLED_RST);
+U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R0, /* cs=*/ PIN_OLED_CHIP_SELECT, /* dc=*/ PIN_OLED_DATA_COMMAND, /* reset=*/ PIN_OLED_RESET);
 
 // If HW SPI misbehaves on your specific board (a known occasional ESP32 quirk --
 // see github.com/olikraus/u8g2/issues/934), swap the line above for this one
 // and match the pins already wired for the display:
-// U8G2_SSD1322_NHD_256X64_F_4W_SW_SPI u8g2(U8G2_R0, /*clock=*/18, /*data=*/23, /*cs=*/OLED_CS, /*dc=*/OLED_DC, /*reset=*/OLED_RST);
+// U8G2_SSD1322_NHD_256X64_F_4W_SW_SPI u8g2(U8G2_R0, /*clock=*/18, /*data=*/23, /*cs=*/PIN_OLED_CHIP_SELECT, /*dc=*/PIN_OLED_DATA_COMMAND, /*reset=*/PIN_OLED_RESET);
 
 char num_buffer[6] = "";
 bool editing_loco_id = false;
