@@ -11,8 +11,9 @@ const uint16_t CSB1_PORT = 2560;       // Standard DCC-EX / WiThrottle port
 // DC mode tells the CSB1 to run one track in DC mode with a given cab id:
 //   <= A DC 3>   (track A -> DC, driven as cab 3)    ...and <= A MAIN> to go back.
 // DCC-EX turns track power off whenever a track's mode changes, so <1 A> is
-// sent afterwards to switch it back on. Set the letter to the track your DC
-// loco is actually wired to (it must not be your PROG track).
+// sent afterwards to switch it back on. This is the SAME track that normally
+// runs your DCC locos: the DC switch flips it to DC and back to MAIN. Set the
+// letter to that track (never your PROG track).
 static const char     DC_TRACK_LETTER = 'A';
 static const uint16_t DC_CAB_ID       = 3;
 

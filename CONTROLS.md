@@ -32,7 +32,7 @@ A single DC loco with a basic screen. The two DCC engines are stopped on entry a
 | Either E-STOP | Emergency stop the DC loco |
 | Everything else | Ignored |
 
-The DC track letter and cab id are `DC_TRACK_LETTER` and `DC_CAB_ID` at the top of `handheld_main/dcc.cpp`. The letter must not be your PROG track. DCC-EX turns a track's power off when its mode changes, so the handheld switches that track's power back on (`<1 A>`) afterwards.
+The DC track letter and cab id are `DC_TRACK_LETTER` and `DC_CAB_ID` at the top of `handheld_main/dcc.cpp`. This is the same track that normally runs your DCC locos: the DC switch flips it to DC and back, and it is never the PROG track. DCC-EX turns a track's power off when its mode changes, so the handheld switches that track's power back on (`<1 A>`) afterwards.
 
 ## Status indicators
 
