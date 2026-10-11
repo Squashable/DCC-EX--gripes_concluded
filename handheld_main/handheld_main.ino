@@ -82,7 +82,22 @@ static int64_t readEncoderDelta(ESP32Encoder &enc, uint8_t i) {
 
 static void clearKeypadEntry() {
   editing_loco_id = false;
+  programming_mode = false;
   num_buffer[0] = '\0';
+}
+
+// Select button for engine idx. First click selects that side (keypad now
+// controls it). Clicking the already-selected side again starts typing a new
+// address for it; clicking once more cancels.
+static void handleSelect(uint8_t idx) {
+  clearProgResult();
+  if (active_focus_idx == idx && !editing_loco_id && !programming_mode) {
+    editing_loco_id = true;
+    num_buffer[0] = '\0';
+  } else {
+    active_focus_idx = idx;
+    clearKeypadEntry();
+  }
 }
 
 void setup() {
@@ -147,6 +162,13 @@ void loop() {
   // running at its last commanded speed). E-stop is still evaluated below, but
   // can't reach the layout until the link returns -- the UI shows a NO LINK banner.
   const bool linkOk = dccLinkUp;
+
+  // Programming results arrive from the CSB1 (or time out) on their own.
+  static ProgState last_prog_state = PROG_IDLE;
+  if (progState != last_prog_state) {
+    last_prog_state = progState;
+    needs_redraw = true;
+  }
 
   // Update every debounced input once per loop, before we act on any of them
   inEnc1Sw.update();
@@ -266,13 +288,11 @@ void loop() {
   // ==========================================
   if (!debugMode && !dcModeActive) {
     if (inSel1.pressedEdge()) {
-      active_focus_idx = 0; // Route keypad commands to Engine 1
-      clearKeypadEntry();
+      handleSelect(0); // Engine 1: select it, or (if already selected) edit its address
       needs_redraw = true;
     }
     if (inSel2.pressedEdge()) {
-      active_focus_idx = 1; // Route keypad commands to Engine 2
-      clearKeypadEntry();
+      handleSelect(1); // Engine 2
       needs_redraw = true;
     }
   }
@@ -331,22 +351,30 @@ void loop() {
     if (debugMode) {
       debugSnap.lastKey = key; // just record it -- no address/function side effects
     } else if (!dcModeActive) {
+      clearProgResult(); // any key dismisses a programming result
+
       if (key >= '0' && key <= '9') {
         size_t len = strlen(num_buffer);
-        size_t max_len = editing_loco_id ? 4 : 2; // Up to 4 digits for address, 2 for functions
+        size_t max_len = (editing_loco_id || programming_mode) ? 4 : 2; // 4 digits for an address, 2 for a function
         if (len < max_len) {
           num_buffer[len] = key;
           num_buffer[len + 1] = '\0';
         }
       }
       else if (key == '*') {
-        // Toggle Address Re-programming Mode
-        editing_loco_id = !editing_loco_id;
+        // Toggle decoder programming: type a new address, then # writes it
+        // into the loco on the programming track.
+        if (programming_mode) {
+          programming_mode = false;
+        } else {
+          editing_loco_id = false;
+          programming_mode = true;
+        }
         num_buffer[0] = '\0';
       }
       else if (key == '#') {
         if (editing_loco_id) {
-          // SAVE NEW LOCO ADDRESS
+          // SAVE NEW HANDHELD ADDRESS for the selected engine
           if (strlen(num_buffer) > 0) {
             uint16_t new_addr = atoi(num_buffer);
             if (new_addr > 0) {
@@ -357,6 +385,16 @@ void loop() {
             }
           }
           editing_loco_id = false;
+        }
+        else if (programming_mode) {
+          // WRITE NEW ADDRESS INTO THE LOCO DECODER (loco must be on the PROG track)
+          if (strlen(num_buffer) > 0 && !programmingBusy()) {
+            uint16_t new_addr = atoi(num_buffer);
+            if (new_addr > 0) {
+              startProgramAddress(new_addr);
+            }
+          }
+          programming_mode = false;
         }
         else {
           // TRIGGER DCC SOUND/LIGHT FUNCTION (ignored while the link is down so

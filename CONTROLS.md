@@ -6,12 +6,20 @@
 |---|---|
 | Encoder 1 / 2 (turn) | Speed for engine 1 / 2 |
 | Encoder 1 / 2 (push) | Toggle direction for engine 1 / 2 |
-| SEL1 / SEL2 | Send keypad input to engine 1 / 2 (focused engine shows `>` and a thick border) |
-| Keypad digits + `#` | Toggle that function number (0-28) on the focused engine |
-| `*` | Start/finish loco address entry; type up to 4 digits then `#` to save |
+| SEL1 / SEL2 | Select that engine (keypad now controls it; shown with `>` and a thick border). Click the already-selected side again to type a new address for it: digits, then `#` to save. Click once more to cancel |
+| Keypad digits + `#` | Toggle that function number (0-28) on the selected engine |
+| `*` | Program the address stored in the loco (see below). Press `*` again to cancel |
 | E-STOP 1 / 2 | Emergency stop engine 1 / 2 |
 | DC switch | Throw to DC for DC mode (below) |
 | Hold SEL1 + SEL2 for 1.5 s | Enter/exit debug mode |
+
+## Programming the address inside the loco
+
+1. Put the loco on the CSB1's programming track (the CSB1 needs a track set to PROG; `<=>` on the serial console lists track modes).
+2. Press `*`, type the new address (up to 4 digits), then press `#`.
+3. The screen shows `WRITING`, then `VERIFYING`, then `LOCO PROGRAMMED TO #n OK` or `PROGRAM FAILED - CHECK PROG TRACK`. Any key dismisses the result.
+
+This sends `<W addr>` and confirms with `<R>`. It changes the address in the decoder itself; it does not change which address the handheld is driving (use the select button for that).
 
 ## DC mode (DC switch thrown)
 
@@ -24,7 +32,7 @@ A single DC loco with a basic screen. The two DCC engines are stopped on entry a
 | Either E-STOP | Emergency stop the DC loco |
 | Everything else | Ignored |
 
-The DC track letter and cab id are `DC_TRACK_LETTER` and `DC_CAB_ID` at the top of `handheld_main/dcc.cpp`.
+The DC track letter and cab id are `DC_TRACK_LETTER` and `DC_CAB_ID` at the top of `handheld_main/dcc.cpp`. The letter must not be your PROG track. DCC-EX turns a track's power off when its mode changes, so the handheld switches that track's power back on (`<1 A>`) afterwards.
 
 ## Status indicators
 

@@ -24,6 +24,17 @@ extern bool dccLinkUp;
 extern bool dcModeActive;
 extern EngineState dcEngine;
 
+// --- Decoder address programming (programming track) ---------------------
+// Writes the loco address stored inside the decoder using <W addr>, then
+// confirms it with <R> (reply <r addr>). The loco must be on the CSB1's PROG
+// track. Result is reported through progState/progAddr for the UI to show.
+enum ProgState : uint8_t { PROG_IDLE, PROG_WRITING, PROG_VERIFYING, PROG_OK, PROG_FAIL };
+extern ProgState progState;
+extern uint16_t progAddr;       // address being / last programmed
+bool programmingBusy();         // true while a write/verify is in flight
+void startProgramAddress(uint16_t addr);
+void clearProgResult();         // dismiss an OK/FAIL result
+
 void initDCC();
 void maintainDCCConnection(); // Call every loop() iteration; handles reconnects, is non-blocking
 void resyncAfterReconnect();  // Call once when the link comes back up

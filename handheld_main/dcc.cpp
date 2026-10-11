@@ -9,9 +9,10 @@ const uint16_t CSB1_PORT = 2560;       // Standard DCC-EX / WiThrottle port
 
 // --- DC mode configuration ---
 // DC mode tells the CSB1 to run one track in DC mode with a given cab id:
-//   <= A DC 3>   (track A -> DC, driven as cab 3)    ...and <= A DCC> to go back.
-// Check these against the track your DC loco is actually wired to, and confirm
-// the syntax against the DCC-EX command reference for your CSB1 firmware.
+//   <= A DC 3>   (track A -> DC, driven as cab 3)    ...and <= A MAIN> to go back.
+// DCC-EX turns track power off whenever a track's mode changes, so <1 A> is
+// sent afterwards to switch it back on. Set the letter to the track your DC
+// loco is actually wired to (it must not be your PROG track).
 static const char     DC_TRACK_LETTER = 'A';
 static const uint16_t DC_CAB_ID       = 3;
 
@@ -39,6 +40,14 @@ static unsigned long lastWifiBegin = 0;
 // Track power is switched on only the first time we connect after boot. Doing
 // it on every reconnect would override someone deliberately cutting power.
 static bool powerOnSent = false;
+
+// Programming-track state (see dcc.h)
+ProgState progState = PROG_IDLE;
+uint16_t progAddr = 0;
+static unsigned long progStartMs = 0;
+static bool progReadSent = false;
+static const unsigned long PROG_VERIFY_AFTER_MS = 3000;   // if the write gave no reply, ask <R> after this long
+static const unsigned long PROG_TIMEOUT_MS = 30000;       // give up entirely after this long
 
 // Set when a DC/DCC track-mode change could not be sent (link was down), so
 // resyncAfterReconnect() knows the CSB1 is out of step with the handheld.
@@ -87,20 +96,87 @@ void initDCC() {
   lastReconnectAttempt = millis();
 }
 
+// Handles one complete reply, the text between '<' and '>'. Only the loco
+// address replies matter here: <w N> / <r N> with a single number, where a
+// negative N is an error. Replies with extra fields (e.g. <r CV VALUE>) and
+// all other broadcasts are ignored.
+static void handleReply(const char* body) {
+  if (progState != PROG_WRITING && progState != PROG_VERIFYING) return;
+  if (body[0] != 'r' && body[0] != 'w') return;
+
+  char* end = nullptr;
+  long v = strtol(body + 1, &end, 10);
+  if (end == body + 1) return;                 // no number
+  while (*end == ' ') end++;
+  if (*end != '\0') return;                    // more fields -> not an address reply
+
+  progState = (v == (long)progAddr) ? PROG_OK : PROG_FAIL;
+}
+
 // The CSB1 broadcasts status back to every client (power state, loco updates).
-// Nothing here uses it, but if it is never read the TCP receive buffer fills
-// and the link eventually stalls. Read and discard a bounded amount per call.
+// If it is never read the TCP receive buffer fills and the link eventually
+// stalls, so read a bounded amount per call and pick out the programming
+// replies as they go past.
 static void drainRx() {
-  uint8_t sink[64];
-  for (int i = 0; i < 8 && dccClient.available() > 0; i++) {
-    dccClient.read(sink, sizeof(sink));
+  static char rxBuf[40];
+  static uint8_t rxLen = 0;
+  static bool inFrame = false;
+
+  for (int n = 0; n < 256 && dccClient.available() > 0; n++) {
+    int c = dccClient.read();
+    if (c < 0) break;
+    if (c == '<') {
+      inFrame = true;
+      rxLen = 0;
+    } else if (c == '>' && inFrame) {
+      rxBuf[rxLen] = '\0';
+      inFrame = false;
+      handleReply(rxBuf);
+    } else if (inFrame) {
+      if (rxLen < sizeof(rxBuf) - 1) rxBuf[rxLen++] = (char)c;
+      else inFrame = false;                    // overlong frame: drop it
+    }
   }
+}
+
+// Sends <R> to confirm a write if the CSB1 hasn't replied yet, and times out a
+// programming attempt that never completes.
+static void serviceProgramming() {
+  if (progState != PROG_WRITING && progState != PROG_VERIFYING) return;
+  unsigned long now = millis();
+  if (now - progStartMs >= PROG_TIMEOUT_MS) {
+    progState = PROG_FAIL;
+    return;
+  }
+  if (!progReadSent && now - progStartMs >= PROG_VERIFY_AFTER_MS) {
+    progReadSent = true;
+    progState = PROG_VERIFYING;
+    sendDCCCommand("R");
+  }
+}
+
+bool programmingBusy() {
+  return progState == PROG_WRITING || progState == PROG_VERIFYING;
+}
+
+void startProgramAddress(uint16_t addr) {
+  progAddr = addr;
+  progReadSent = false;
+  progStartMs = millis();
+  char cmd[24];
+  snprintf(cmd, sizeof(cmd), "W %u", addr);
+  progState = sendDCCCommand(cmd) ? PROG_WRITING : PROG_FAIL;
+}
+
+void clearProgResult() {
+  if (progState == PROG_OK || progState == PROG_FAIL) progState = PROG_IDLE;
 }
 
 // Call this once per loop() iteration. Non-blocking apart from a short, bounded
 // TCP connect attempt every RECONNECT_RETRY_INTERVAL_MS while the socket is down.
 void maintainDCCConnection() {
   drainRx();
+  serviceProgramming();
 
   bool wifiUp = (WiFi.status() == WL_CONNECTED);
   if (wifiUp && dccClient.connected()) {
@@ -194,9 +270,14 @@ static void sendTrackMode(bool dc) {
   if (dc) {
     snprintf(cmd, sizeof(cmd), "= %c DC %u", DC_TRACK_LETTER, DC_CAB_ID);
   } else {
-    snprintf(cmd, sizeof(cmd), "= %c DCC", DC_TRACK_LETTER);
+    snprintf(cmd, sizeof(cmd), "= %c MAIN", DC_TRACK_LETTER);
   }
   trackModeDirty = !sendDCCCommand(cmd);
+  if (!trackModeDirty) {
+    // DCC-EX switches track power off whenever the mode changes -- turn this track back on.
+    snprintf(cmd, sizeof(cmd), "1 %c", DC_TRACK_LETTER);
+    sendDCCCommand(cmd);
+  }
 }
 
 void enterDCMode() {

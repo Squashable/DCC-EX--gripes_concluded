@@ -4,7 +4,8 @@
 #include <Arduino.h>
 
 extern char num_buffer[6];
-extern bool editing_loco_id;
+extern bool editing_loco_id;   // typing a new handheld address for the selected engine
+extern bool programming_mode;  // typing a new address to write into the loco's decoder
 
 // Debug/test mode: hold BTN_SELECT_E1 + BTN_SELECT_E2 together for 1.5s to
 // toggle. While active, encoders/keypad/DC-switch are captured for display

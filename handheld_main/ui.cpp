@@ -32,6 +32,7 @@ U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R0, /* cs=*/ PIN_OLED_CHIP_SELECT,
 
 char num_buffer[6] = "";
 bool editing_loco_id = false;
+bool programming_mode = false;
 bool debugMode = false;
 DebugSnapshot debugSnap;
 
@@ -136,7 +137,17 @@ static void drawDccRow(int i, int y, bool is_focused) {
   if (drawSecondLineFault(i, y)) return; // fault banner takes priority over function list
 
   u8g2.setFont(FONT_NORMAL);
-  if (is_focused && !editing_loco_id && strlen(num_buffer) > 0) {
+  if (is_focused && programming_mode) {
+    snprintf(lineBuf, sizeof(lineBuf), "PROG ADDR:[%s_] #=WRITE *=CANCEL", num_buffer);
+  } else if (is_focused && progState == PROG_WRITING) {
+    snprintf(lineBuf, sizeof(lineBuf), "WRITING #%u TO LOCO - PLEASE WAIT", progAddr);
+  } else if (is_focused && progState == PROG_VERIFYING) {
+    snprintf(lineBuf, sizeof(lineBuf), "VERIFYING #%u - PLEASE WAIT", progAddr);
+  } else if (is_focused && progState == PROG_OK) {
+    snprintf(lineBuf, sizeof(lineBuf), "LOCO PROGRAMMED TO #%u OK", progAddr);
+  } else if (is_focused && progState == PROG_FAIL) {
+    snprintf(lineBuf, sizeof(lineBuf), "PROGRAM FAILED - CHECK PROG TRACK");
+  } else if (is_focused && !editing_loco_id && strlen(num_buffer) > 0) {
     snprintf(lineBuf, sizeof(lineBuf), "F:[%s_]", num_buffer); // live typing buffer
   } else {
     char funcs[28] = "";
