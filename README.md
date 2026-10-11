@@ -25,6 +25,6 @@ This paired with a wireless controller that looks something like this extremely 
 
 **Firmware**
 
-The ESP32 firmware lives in `handheld_main/` (open `handheld_main.ino` in Arduino IDE; the folder name must match the sketch name). Libraries needed: `ESP32Encoder`, `Keypad`, `U8g2`. See `CONTROLS.md` for the controls and on-screen indicators.
+The ESP32 firmware lives in `handheld_main/` (open `handheld_main.ino` in Arduino IDE; the folder name must match the sketch name). Libraries needed: `ESP32Encoder`, `Keypad`, `U8g2`. See `MANUAL.md` for the full user manual and `CONTROLS.md` for a short controls summary.
 
 Set the CSB1 Wi-Fi name/password in `handheld_main/dcc.cpp`. In DC mode the handheld runs one DC loco (track and cab id set by `DC_TRACK_LETTER` / `DC_CAB_ID` in the same file) with a basic single-throttle screen.
