@@ -44,6 +44,9 @@ public:
 
   bool pressedEdge()  const { return _pressedEdge; }  // true for one loop on HIGH->LOW
   bool releasedEdge() const { return _releasedEdge; }  // true for one loop on LOW->HIGH
+  // True for one loop at the moment the input is first flagged faulty. Lets
+  // safety-critical callers (E-stop) fail safe instead of going deaf.
+  bool faultStartedEdge() const { return _faultStartedEdge; }
   bool state()  const { return _stable; }              // debounced level (LOW = active)
   bool faulty() const { return _tracker.faulty; }
 
@@ -59,6 +62,7 @@ private:
 
   bool _pressedEdge = false;
   bool _releasedEdge = false;
+  bool _faultStartedEdge = false;
   FaultTracker _tracker;
 };
 

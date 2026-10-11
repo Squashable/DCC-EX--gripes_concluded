@@ -41,9 +41,11 @@ void DebouncedInput::begin(uint8_t pin, unsigned long debounceMs, uint8_t chatte
 void DebouncedInput::update() {
   _pressedEdge = false;
   _releasedEdge = false;
+  _faultStartedEdge = false;
 
   unsigned long now = millis();
   bool raw = digitalRead(_pin);
+  bool wasFaulty = _tracker.faulty;
 
   if (raw != _lastRaw) {
     // Raw pin just moved -- this counts as "activity" for fault detection
@@ -55,6 +57,10 @@ void DebouncedInput::update() {
   }
 
   updateFaultRecovery(_tracker, now, _recoveryQuietMs);
+
+  if (!wasFaulty && _tracker.faulty) {
+    _faultStartedEdge = true;
+  }
 
   if (_tracker.faulty) {
     // Don't act on a control we believe is malfunctioning. Freeze at last

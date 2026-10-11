@@ -1,5 +1,5 @@
-#include "UI.h"
-#include "DCC.h"
+#include "ui.h"
+#include "dcc.h"
 #include "inputs.h"
 #include <U8g2lib.h>
 #include <SPI.h>
@@ -46,7 +46,8 @@ static const int LINE1_BASELINE = 10; // offset from row top for address/directi
 static const int LINE2_BASELINE = 24; // offset from row top for function list/fault text
 
 static const uint8_t* FONT_NORMAL = u8g2_font_6x10_tf;
-static const uint8_t* FONT_BIG_BOLD = u8g2_font_9x15B_tf; // used only for the DC-mode label
+static const uint8_t* FONT_BIG_BOLD = u8g2_font_9x15B_tf; // used on the DC-mode screen
+static const uint8_t* FONT_TINY = u8g2_font_5x7_tf;       // fits the 8px status strip
 
 static char lineBuf[40];
 
@@ -153,26 +154,6 @@ static void drawDccRow(int i, int y, bool is_focused) {
   u8g2.drawStr(4, y + LINE2_BASELINE, lineBuf);
 }
 
-// DC-mode row: deliberately "half" of the DCC row above -- same frame,
-// direction indicator, and speed bar/%, but with the DCC-only fields
-// (loco address, function list) replaced by a big DC label, since address
-// programming and DCC functions don't apply on plain DC track.
-static void drawDcRow(int i, int y, bool is_focused) {
-  const EngineState &eng = engines[i];
-
-  u8g2.setFont(FONT_BIG_BOLD);
-  snprintf(lineBuf, sizeof(lineBuf), "%sDC", is_focused ? ">" : " ");
-  u8g2.drawStr(4, y + 16, lineBuf);
-
-  drawDirection(y, eng);
-  drawSpeedBar(y, eng.speed);
-
-  if (drawSecondLineFault(i, y)) return;
-
-  u8g2.setFont(FONT_NORMAL);
-  u8g2.drawStr(4, y + LINE2_BASELINE, "THROTTLE ONLY - NO ADDR/FN");
-}
-
 // Status strip: link icon (right) and a small filled-square icon (left) for
 // the DC-toggle-switch fault, since that's the one fault that isn't tied to
 // a single engine's row. No text here -- an 8px strip is too short for
@@ -187,6 +168,60 @@ static void drawStatusStrip() {
   if (faults.dcToggle) {
     u8g2.drawBox(2, 1, 5, 5); // see CONTROLS.md for what this icon means
   }
+
+  if (!dccLinkUp) {
+    // Throttle/function input is ignored while offline, so say so plainly.
+    u8g2.setFont(FONT_TINY);
+    u8g2.drawStr(12, 7, "NO LINK - CONTROLS NOT SENT");
+  }
+}
+
+// ----------------------------------------------------------------------------
+// DC mode screen: ONE DC loco, deliberately basic -- mode label, direction,
+// a big speed bar and percentage. Encoder 1 = speed, its push = direction.
+// ----------------------------------------------------------------------------
+static const char* dcFaultLabel() {
+  if (!dccLinkUp)        return "NO LINK - CONTROLS NOT SENT";
+  if (faults.estop1)     return "ESTOP1 FAULT - CHECK WIRING";
+  if (faults.estop2)     return "ESTOP2 FAULT - CHECK WIRING";
+  if (faults.enc1Sw)     return "ENC1 BUTTON FAULT";
+  if (faults.enc1Sensor) return "ENC1 SENSOR NOISY - IGNORED";
+  if (faults.dcToggle)   return "DC SWITCH FAULT";
+  return nullptr;
+}
+
+static void renderDcGUI() {
+  u8g2.setFont(FONT_BIG_BOLD);
+  u8g2.drawStr(4, 15, "DC MODE");
+  u8g2.drawStr(150, 15, dcEngine.direction_fwd ? "[FWD]" : "[REV]");
+
+  if (dccLinkUp) {
+    u8g2.drawDisc(250, 6, 3);
+  } else {
+    u8g2.drawCircle(250, 6, 3);
+  }
+
+  const int bar_x = 4, bar_y = 24, bar_w = 200, bar_h = 16;
+  float pct = dcEngine.speed / 126.0f;
+  u8g2.drawFrame(bar_x, bar_y, bar_w, bar_h);
+  if (dcEngine.speed > 0) {
+    u8g2.drawBox(bar_x + 2, bar_y + 2, (int)((bar_w - 4) * pct), bar_h - 4);
+  }
+  snprintf(lineBuf, sizeof(lineBuf), "%3d%%", (int)(pct * 100));
+  u8g2.drawStr(212, bar_y + 13, lineBuf);
+
+  u8g2.setFont(FONT_NORMAL);
+  const char* fault = dcFaultLabel();
+  if (fault) {
+    u8g2.setDrawColor(1);
+    u8g2.drawBox(1, 44, 254, 11);
+    u8g2.setDrawColor(0);
+    u8g2.drawStr(4, 53, fault);
+    u8g2.setDrawColor(1);
+  } else {
+    u8g2.drawStr(4, 52, "ENC1: SPEED / PUSH: DIRECTION");
+  }
+  u8g2.drawStr(4, 62, "THROW DC SWITCH TO RETURN TO DCC");
 }
 
 // ----------------------------------------------------------------------------
@@ -262,6 +297,12 @@ void renderGUI() {
     return;
   }
 
+  if (dcModeActive) {
+    renderDcGUI();
+    u8g2.sendBuffer();
+    return;
+  }
+
   drawStatusStrip();
 
   for (int i = 0; i < 2; i++) {
@@ -270,11 +311,7 @@ void renderGUI() {
 
     drawRowFrame(y, is_focused);
 
-    if (engines[i].address == 0) {
-      drawDcRow(i, y, is_focused);
-    } else {
-      drawDccRow(i, y, is_focused);
-    }
+    drawDccRow(i, y, is_focused);
   }
 
   u8g2.sendBuffer();
