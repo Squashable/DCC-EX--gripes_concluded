@@ -43,6 +43,11 @@ void resyncAfterReconnect();  // Call once when the link comes back up
 bool sendDCCCommand(const char* cmd);
 
 void updateLocoThrottle(uint8_t idx);
+
+// Stops the loco at engine idx's current address, then points the engine at
+// newAddr (speed 0, functions cleared). If the link is down the stop for the
+// old address is remembered and sent when the link returns.
+void changeEngineAddress(uint8_t idx, uint16_t newAddr);
 void toggleDCCFunction(uint8_t idx, uint8_t func_num);
 void sendEStop(uint8_t idx);
 

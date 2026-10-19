@@ -54,6 +54,16 @@ static const unsigned long PROG_TIMEOUT_MS = 30000;       // give up entirely af
 // resyncAfterReconnect() knows the CSB1 is out of step with the handheld.
 static bool trackModeDirty = false;
 
+// Stops that could not be sent because the link was down. Slot 0/1 = DCC
+// engines, slot 2 = the DC loco. They are replayed (before any track-mode
+// change) when the link comes back, so the layout never keeps running a loco
+// the screen shows as stopped.
+static const uint8_t DC_SLOT = 2;
+static bool     pendingStop[3]      = {false, false, false};
+static bool     pendingEmergency[3] = {false, false, false};
+static uint16_t pendingAddr[3]      = {0, 0, 0};
+static bool     pendingDirFwd[3]    = {true, true, true};
+
 // NOTE ON COMMAND FORMAT: throttle uses <t CAB SPEED DIRECTION> and functions
 // use <F CAB FUNC STATE> (capital F -- lowercase <f> is the legacy byte-based
 // form). If your CSB1 firmware is older, test these against its serial console.
@@ -64,6 +74,11 @@ static bool openCSB1Socket() {
     if (!powerOnSent) {
       sendDCCCommand("1"); // Enable Track Power (<1>) -- first connect after boot only
       powerOnSent = true;
+    } else {
+      // Reconnect: replay anything that couldn't be sent while offline. Done
+      // here as well as in loop() because a drop that is repaired within a
+      // single maintainDCCConnection() call is never seen as "down" by loop().
+      resyncAfterReconnect();
     }
     return true;
   }
@@ -237,16 +252,39 @@ static void sendThrottle(const EngineState &e) {
   sendDCCCommand(cmd);
 }
 
-static void sendEmergencyStop(EngineState &e) {
+// Stops the loco at e.address (slot = 0/1 engine, DC_SLOT for the DC loco).
+// emergency = true sends speed -1 (E-stop), false sends speed 0. If the command
+// can't be sent the stop is remembered and replayed on reconnect.
+static void sendStop(uint8_t slot, EngineState &e, bool emergency) {
   e.speed = 0;
-  // Speed -1 triggers Emergency Stop in DCC-EX
   char cmd[32];
-  snprintf(cmd, sizeof(cmd), "t %u -1 %d", e.address, e.direction_fwd ? 1 : 0);
-  sendDCCCommand(cmd);
+  // Speed -1 triggers Emergency Stop in DCC-EX
+  snprintf(cmd, sizeof(cmd), "t %u %d %d", e.address, emergency ? -1 : 0, e.direction_fwd ? 1 : 0);
+  if (sendDCCCommand(cmd)) {
+    pendingStop[slot] = false;
+  } else {
+    // Keep an earlier pending emergency stop even if a later plain stop fails too
+    pendingEmergency[slot] = pendingStop[slot] ? (pendingEmergency[slot] || emergency) : emergency;
+    pendingStop[slot] = true;
+    pendingAddr[slot] = e.address;
+    pendingDirFwd[slot] = e.direction_fwd;
+  }
+}
+
+static void sendEmergencyStop(uint8_t slot, EngineState &e) {
+  sendStop(slot, e, true);
 }
 
 void updateLocoThrottle(uint8_t idx) {
   sendThrottle(engines[idx]);
+}
+
+void changeEngineAddress(uint8_t idx, uint16_t newAddr) {
+  sendStop(idx, engines[idx], false); // stop the loco we are about to stop controlling
+  engines[idx].address = newAddr;
+  engines[idx].speed = 0;
+  engines[idx].functions = 0;
+  updateLocoThrottle(idx);
 }
 
 void toggleDCCFunction(uint8_t idx, uint8_t func_num) {
@@ -260,7 +298,7 @@ void toggleDCCFunction(uint8_t idx, uint8_t func_num) {
 }
 
 void sendEStop(uint8_t idx) {
-  sendEmergencyStop(engines[idx]);
+  sendEmergencyStop(idx, engines[idx]);
 }
 
 // ---------------------------------------------------------------------------
@@ -284,8 +322,7 @@ static void sendTrackMode(bool dc) {
 void enterDCMode() {
   // Make sure both DCC engines are stopped before the track changes mode.
   for (uint8_t e = 0; e < 2; e++) {
-    engines[e].speed = 0;
-    updateLocoThrottle(e);
+    sendStop(e, engines[e], false);
   }
   sendTrackMode(true);
   dcEngine.speed = 0;
@@ -294,8 +331,7 @@ void enterDCMode() {
 }
 
 void exitDCMode() {
-  dcEngine.speed = 0;
-  updateDCThrottle();
+  sendStop(DC_SLOT, dcEngine, false);
   sendTrackMode(false);
   dcModeActive = false;
 }
@@ -305,25 +341,32 @@ void updateDCThrottle() {
 }
 
 void sendDCEStop() {
-  sendEmergencyStop(dcEngine);
+  sendEmergencyStop(DC_SLOT, dcEngine);
 }
 
 void stopAllThrottles() {
   if (dcModeActive) {
-    dcEngine.speed = 0;
-    updateDCThrottle();
+    sendStop(DC_SLOT, dcEngine, false);
   } else {
     for (uint8_t e = 0; e < 2; e++) {
-      engines[e].speed = 0;
-      updateLocoThrottle(e);
+      sendStop(e, engines[e], false);
     }
   }
 }
 
-// Called once each time the link comes back. Input is ignored while offline
-// (see loop()), so throttle state already matches the CSB1; the only thing that
-// can be out of step is a DC/DCC track-mode change made while offline.
+// Called each time the link comes back. Throttle/direction/function input is
+// ignored while offline (see loop()), so those already match the CSB1. What can
+// be out of step: stops (E-stop, debug toggle, address change, DC switch) that
+// were made while offline, and a DC/DCC track-mode change. Stops go first, so
+// nothing is still moving when the track mode changes.
 void resyncAfterReconnect() {
+  for (uint8_t s = 0; s < 3; s++) {
+    if (!pendingStop[s]) continue;
+    char cmd[32];
+    snprintf(cmd, sizeof(cmd), "t %u %d %d", pendingAddr[s], pendingEmergency[s] ? -1 : 0,
+             pendingDirFwd[s] ? 1 : 0);
+    if (sendDCCCommand(cmd)) pendingStop[s] = false;
+  }
   if (!trackModeDirty) return;
   sendTrackMode(dcModeActive);
   if (dcModeActive) updateDCThrottle();

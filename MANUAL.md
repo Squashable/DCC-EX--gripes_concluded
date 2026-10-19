@@ -41,6 +41,7 @@ On power-up the screen shows `Connecting to CSB1...` while the handheld joins th
 2. **Link dot.** The dot at the top right is filled while the handheld is connected to the CSB1 and hollow when it is not.
 3. **If the link drops.** The top strip reads `NO LINK - CONTROLS NOT SENT`. Throttle, direction and function input is ignored, so the screen always matches what the layout is really doing. The locos keep running at their last speed, and the E-stop buttons cannot reach the layout until the link returns.
 4. **Reconnecting.** The handheld retries on its own: Wi-Fi every 10 seconds, the CSB1 connection every 3 seconds. Nothing needs pressing.
+5. **Stops made while offline.** An E-stop, a stop from the debug-mode toggle, an address change or a DC switch throw made while the link is down shows the engine at 0% but cannot reach the loco. The handheld remembers those stops and sends them as soon as the link returns, before any DC/DCC track-mode change.
 
 Stay in range of the CSB1, and keep the layout's own stop control within reach in case the link is lost while a loco is moving.
 
@@ -69,7 +70,7 @@ This changes which loco the handheld is driving. It does not change anything ins
 
 1. Click the select button of the engine that is already selected.
 2. The line shows `>E1:#_`. Type up to 4 digits.
-3. Press `#` to save. The engine is stopped and its function list is cleared.
+3. Press `#` to save. The loco at the old address is sent a stop first, then the engine switches to the new address with speed 0 and its function list cleared. (Functions already on in the old loco stay on in its decoder.)
 4. To cancel, click the select button again.
 
 ### Functions (sound, lights)
@@ -120,7 +121,7 @@ DCC locos on the DC track cannot be controlled while it is in DC mode, so run on
 
 Each E-stop button stops its own engine immediately. It works in every mode, including debug mode. It stops that loco only; it does not cut track power, so use the CSB1's own controls for a full power-off.
 
-The E-stop fails safe. If an E-stop input starts chattering, as a failing button or loose wire would, the handheld treats that as a press and stops the engine instead of ignoring the button.
+The E-stop fails safe. If an E-stop input starts chattering, as a failing button or loose wire would, the handheld treats that as a press and stops the engine instead of ignoring the button. While the input stays flagged as faulty, every time the line goes low is treated as another press, so a real press still stops the engine.
 
 ### Fault banners
 
