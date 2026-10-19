@@ -47,6 +47,10 @@ public:
   // True for one loop at the moment the input is first flagged faulty. Lets
   // safety-critical callers (E-stop) fail safe instead of going deaf.
   bool faultStartedEdge() const { return _faultStartedEdge; }
+  // True for one loop each time the raw line goes LOW while the input is
+  // already flagged faulty. A faulty input is otherwise frozen, so without this
+  // a genuine E-stop press during a fault would be ignored.
+  bool faultPressEdge() const { return _faultPressEdge; }
   bool state()  const { return _stable; }              // debounced level (LOW = active)
   bool faulty() const { return _tracker.faulty; }
 
@@ -63,6 +67,7 @@ private:
   bool _pressedEdge = false;
   bool _releasedEdge = false;
   bool _faultStartedEdge = false;
+  bool _faultPressEdge = false;
   FaultTracker _tracker;
 };
 

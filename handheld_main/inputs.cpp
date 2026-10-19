@@ -42,6 +42,7 @@ void DebouncedInput::update() {
   _pressedEdge = false;
   _releasedEdge = false;
   _faultStartedEdge = false;
+  _faultPressEdge = false;
 
   unsigned long now = millis();
   bool raw = digitalRead(_pin);
@@ -52,6 +53,9 @@ void DebouncedInput::update() {
     // regardless of whether it survives debouncing, since a healthy button
     // shouldn't flicker rapidly even briefly.
     noteFaultActivity(_tracker, now, _chatterThreshold, _chatterWindowMs);
+    // Already faulty and the line just went LOW: report it so safety-critical
+    // callers (E-stop) can still react even though the input is frozen.
+    if (wasFaulty && raw == LOW) _faultPressEdge = true;
     _lastRaw = raw;
     _lastEdgeMs = now;
   }

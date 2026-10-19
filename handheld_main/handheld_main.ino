@@ -332,11 +332,11 @@ void loop() {
       the single DC loco.
      ==========================================
    */
-  if (inEstop1.pressedEdge() || inEstop1.faultStartedEdge()) {
+  if (inEstop1.pressedEdge() || inEstop1.faultStartedEdge() || inEstop1.faultPressEdge()) {
     if (dcModeActive) sendDCEStop(); else sendEStop(0);
     needs_redraw = true;
   }
-  if (inEstop2.pressedEdge() || inEstop2.faultStartedEdge()) {
+  if (inEstop2.pressedEdge() || inEstop2.faultStartedEdge() || inEstop2.faultPressEdge()) {
     if (dcModeActive) sendDCEStop(); else sendEStop(1);
     needs_redraw = true;
   }
@@ -378,10 +378,8 @@ void loop() {
           if (strlen(num_buffer) > 0) {
             uint16_t new_addr = atoi(num_buffer);
             if (new_addr > 0) {
-              engines[active_focus_idx].address = new_addr;
-              engines[active_focus_idx].speed = 0;
-              engines[active_focus_idx].functions = 0;
-              updateLocoThrottle(active_focus_idx);
+              // Stops the loco at the OLD address first, then switches
+              changeEngineAddress(active_focus_idx, new_addr);
             }
           }
           editing_loco_id = false;
