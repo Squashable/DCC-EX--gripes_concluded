@@ -12,7 +12,7 @@ const uint8_t PIN_ENCODER_1_B = 21;
 const uint8_t PIN_ENCODER_1_SWITCH = 22;  // Engine 1 Direction Toggle (also the DC-mode direction toggle)
 
 const uint8_t PIN_ENCODER_2_A = 4;
-const uint8_t PIN_ENCODER_2_B = 0;
+const uint8_t PIN_ENCODER_2_B = 17;  // GPIO0 avoided: it is a boot-mode strap pin
 const uint8_t PIN_ENCODER_2_SWITCH = 2;   // Engine 2 Direction Toggle
 
 const uint8_t PIN_BUTTON_SELECT_E1 = 39;  // Input-only; requires external 10k pull-up to 3.3V
