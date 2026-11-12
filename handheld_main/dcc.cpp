@@ -65,6 +65,9 @@ static bool trackModeDirty = false;
 static const uint8_t DC_SLOT = 2;
 static bool     pendingStop[3]      = {false, false, false};
 static bool     pendingEmergency[3] = {false, false, false};
+// Remains latched after an E-stop until the operator issues a new throttle
+// command. This prevents reconnect/mode recovery from silently restarting it.
+static bool     emergencyLatched[3] = {false, false, false};
 static uint16_t pendingAddr[3]      = {0, 0, 0};
 static bool     pendingDirFwd[3]    = {true, true, true};
 
@@ -74,6 +77,7 @@ static bool     pendingDirFwd[3]    = {true, true, true};
 
 static bool openCSB1Socket() {
   if (dccClient.connect(CSB1_IP, CSB1_PORT, TCP_CONNECT_TIMEOUT_MS)) {
+    dccClient.setNoDelay(true); // Avoid Nagle batching for responsive throttle updates.
     Serial.println("DCC-EX TCP Socket Open!");
     if (AUTO_POWER_ON_FIRST_CONNECT && !powerOnSent) {
       powerOnSent = sendDCCCommand("1"); // Optional: enable all track power once after boot.
@@ -179,6 +183,10 @@ bool programmingBusy() {
 }
 
 void startProgramAddress(uint16_t addr) {
+  if (addr == 0 || addr > 10239) {
+    progState = PROG_FAIL;
+    return;
+  }
   progAddr = addr;
   progReadSent = false;
   progStartMs = millis();
@@ -298,15 +306,20 @@ static void sendStop(uint8_t slot, EngineState &e, bool emergency) {
 }
 
 static void sendEmergencyStop(uint8_t slot, EngineState &e) {
+  if (slot >= 3) return;
+  emergencyLatched[slot] = true;
   sendStop(slot, e, true);
 }
 
 void updateLocoThrottle(uint8_t idx) {
+  if (idx >= 2) return;
+  emergencyLatched[idx] = false; // An intentional new throttle command releases the E-stop latch.
   sendThrottle(engines[idx]);
 }
 
 void changeEngineAddress(uint8_t idx, uint16_t newAddr) {
-  if (idx >= 2 || newAddr == 0 || newAddr > 10293) return;
+  if (idx >= 2 || newAddr == 0 || newAddr > 10239) return;
+  if (newAddr == engines[1 - idx].address) return; // Never bind both throttles to one loco.
   sendStop(idx, engines[idx], false); // stop the loco we are about to stop controlling
   engines[idx].address = newAddr;
   engines[idx].speed = 0;
@@ -370,6 +383,7 @@ void exitDCMode() {
 }
 
 void updateDCThrottle() {
+  emergencyLatched[DC_SLOT] = false; // Explicit operator throttle input releases the DC E-stop latch.
   sendThrottle(dcEngine);
 }
 
@@ -407,6 +421,7 @@ void resyncAfterReconnect() {
       pendingStop[s] = false;
       pendingEmergency[s] = false;
       emergencyStopReplayed[s] = wasEmergency;
+      if (wasEmergency) emergencyLatched[s] = true;
     }
   }
 
@@ -421,10 +436,10 @@ void resyncAfterReconnect() {
   // drop during a packet write, where the handheld may have updated locally
   // but the command station may not have received the complete command.
   if (dcModeActive) {
-    if (!emergencyStopReplayed[DC_SLOT]) updateDCThrottle();
+    if (!emergencyLatched[DC_SLOT]) sendThrottle(dcEngine);
   } else {
     for (uint8_t e = 0; e < 2; e++) {
-      if (!emergencyStopReplayed[e]) updateLocoThrottle(e);
+      if (!emergencyLatched[e]) sendThrottle(engines[e]);
     }
   }
 }
