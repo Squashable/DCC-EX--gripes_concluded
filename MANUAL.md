@@ -119,7 +119,7 @@ DCC locos on the DC track cannot be controlled while it is in DC mode, so run on
 
 ### Emergency stop
 
-Each E-stop button stops its own engine immediately. It works in every mode, including debug mode. It stops that loco only; it does not cut track power, so use the CSB1's own controls for a full power-off.
+Each E-stop button stops its own engine immediately. It works in every mode, including debug mode, and a button already held while the handheld boots is honoured after the initial connection attempt. It stops that loco only; it does not cut track power, so use the CSB1's own controls for a full power-off. After an E-stop, reconnect recovery will not restart that loco; the latch is released only by a new throttle command from the operator.
 
 The E-stop fails safe. If an E-stop input starts chattering, as a failing button or loose wire would, the handheld treats that as a press and stops the engine instead of ignoring the button. While the input stays flagged as faulty, every time the line goes low is treated as another press, so a real press still stops the engine.
 
