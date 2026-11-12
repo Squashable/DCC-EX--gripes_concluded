@@ -37,6 +37,8 @@ static const unsigned long RECONNECT_RETRY_INTERVAL_MS = 3000; // How often the 
 static const int32_t TCP_CONNECT_TIMEOUT_MS = 1000;            // Keep a failed connect() from freezing the loop for seconds
 static unsigned long lastReconnectAttempt = 0;
 static unsigned long lastWifiBegin = 0;
+static unsigned long lastRecoveryAttempt = 0;
+static const unsigned long RECOVERY_RETRY_INTERVAL_MS = 500;
 
 // Do not energise the layout automatically at boot. Track power remains under
 // the command station/operator's control. Enable only if this is explicitly
@@ -198,6 +200,16 @@ void maintainDCCConnection() {
   bool wifiUp = (WiFi.status() == WL_CONNECTED);
   if (wifiUp && dccClient.connected()) {
     dccLinkUp = true;
+
+    // A recovery transaction can itself fail (e.g. a brief RF fade during
+    // the mode/power sequence). Retry only the outstanding safety work, at a
+    // bounded rate, even though the TCP socket remains connected.
+    const bool recoveryPending = trackModeDirty ||
+        pendingStop[0] || pendingStop[1] || pendingStop[DC_SLOT];
+    if (recoveryPending && now - lastRecoveryAttempt >= RECOVERY_RETRY_INTERVAL_MS) {
+      lastRecoveryAttempt = now;
+      resyncAfterReconnect();
+    }
     return;
   }
 
