@@ -197,6 +197,7 @@ void maintainDCCConnection() {
   drainRx();
   serviceProgramming();
 
+  const unsigned long now = millis();
   bool wifiUp = (WiFi.status() == WL_CONNECTED);
   if (wifiUp && dccClient.connected()) {
     dccLinkUp = true;
@@ -214,7 +215,6 @@ void maintainDCCConnection() {
   }
 
   dccLinkUp = false;
-  unsigned long now = millis();
 
   if (!wifiUp) {
     // A TCP socket from the previous Wi-Fi association must never be reused.
