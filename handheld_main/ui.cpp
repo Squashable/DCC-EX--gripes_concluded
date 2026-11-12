@@ -29,7 +29,7 @@ U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R0, /* cs=*/ PIN_OLED_CHIP_SELECT,
 // If HW SPI misbehaves on your specific board (a known occasional ESP32 quirk --
 // see github.com/olikraus/u8g2/issues/934), swap the line above for this one
 // and match the pins already wired for the display:
-// U8G2_SSD1322_NHD_256X64_F_4W_SW_SPI u8g2(U8G2_R0, /*clock=*/18, /*data=*/23, /*cs=*/PIN_OLED_CHIP_SELECT, /*dc=*/PIN_OLED_DATA_COMMAND, /*reset=*/PIN_OLED_RESET);
+// U8G2_SSD1322_NHD_256X64_F_4W_SW_SPI u8g2(U8G2_R0, /*clock=*/18, /*data=*/23, /*cs=*/PIN_OLED_CHIP_SELECT, /*dc=*/PIN_OLED_DATA_COMMAND, /*reset=*/U8X8_PIN_NONE);
 
 char num_buffer[6] = "";
 bool editing_loco_id = false;
