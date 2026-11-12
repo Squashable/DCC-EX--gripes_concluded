@@ -18,12 +18,13 @@
 //   OLED_MOSI -> GPIO23 (VSPI MOSI)
 const uint8_t PIN_OLED_CHIP_SELECT = 5;
 const uint8_t PIN_OLED_DATA_COMMAND = 16;
-const uint8_t PIN_OLED_RESET = 17;
+// OLED RESET is wired to the ESP32 EN/reset line, not a GPIO. This frees
+// GPIO17 for encoder 2 and ensures the display is hardware-reset with the MCU.
 
 // "_F_" = full frame buffer (256x64 mono = 2KB RAM, fine on ESP32) rather than
 // the page-buffer variants, so we can draw the whole UI then push it in one go
 // with clearBuffer()/sendBuffer(), matching how the old sprite-based code worked.
-U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R0, /* cs=*/ PIN_OLED_CHIP_SELECT, /* dc=*/ PIN_OLED_DATA_COMMAND, /* reset=*/ PIN_OLED_RESET);
+U8G2_SSD1322_NHD_256X64_F_4W_HW_SPI u8g2(U8G2_R0, /* cs=*/ PIN_OLED_CHIP_SELECT, /* dc=*/ PIN_OLED_DATA_COMMAND, /* reset=*/ U8X8_PIN_NONE);
 
 // If HW SPI misbehaves on your specific board (a known occasional ESP32 quirk --
 // see github.com/olikraus/u8g2/issues/934), swap the line above for this one
