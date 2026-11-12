@@ -167,7 +167,6 @@ void loop() {
   static bool last_link_state = true;
   maintainDCCConnection();
   if (dccLinkUp != last_link_state) {
-    if (dccLinkUp) resyncAfterReconnect(); // link just came back
     last_link_state = dccLinkUp;
     needs_redraw = true; // refresh the link-status indicator
   }
