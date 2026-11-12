@@ -38,8 +38,10 @@ static const int32_t TCP_CONNECT_TIMEOUT_MS = 1000;            // Keep a failed 
 static unsigned long lastReconnectAttempt = 0;
 static unsigned long lastWifiBegin = 0;
 
-// Track power is switched on only the first time we connect after boot. Doing
-// it on every reconnect would override someone deliberately cutting power.
+// Do not energise the layout automatically at boot. Track power remains under
+// the command station/operator's control. Enable only if this is explicitly
+// desired for a particular installation.
+static const bool AUTO_POWER_ON_FIRST_CONNECT = false;
 static bool powerOnSent = false;
 
 // Programming-track state (see dcc.h)
@@ -71,15 +73,11 @@ static bool     pendingDirFwd[3]    = {true, true, true};
 static bool openCSB1Socket() {
   if (dccClient.connect(CSB1_IP, CSB1_PORT, TCP_CONNECT_TIMEOUT_MS)) {
     Serial.println("DCC-EX TCP Socket Open!");
-    if (!powerOnSent) {
-      sendDCCCommand("1"); // Enable Track Power (<1>) -- first connect after boot only
-      powerOnSent = true;
-    } else {
-      // Reconnect: replay anything that couldn't be sent while offline. Done
-      // here as well as in loop() because a drop that is repaired within a
-      // single maintainDCCConnection() call is never seen as "down" by loop().
-      resyncAfterReconnect();
+    if (AUTO_POWER_ON_FIRST_CONNECT && !powerOnSent) {
+      powerOnSent = sendDCCCommand("1"); // Optional: enable all track power once after boot.
     }
+    // Reconnect recovery is deliberately centralised in loop() after it sees
+    // the link transition. This prevents replaying commands twice.
     return true;
   }
   Serial.println("Connection to CSB1 TCP Socket Failed!");
@@ -92,6 +90,9 @@ void initDCC() {
   // Connect to the CSB1 Base Station over Wi-Fi (bounded wait so we don't hang forever
   // if the CSB1 AP isn't up yet -- maintainDCCConnection() will keep retrying afterward)
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);       // Prefer predictable throttle latency over Wi-Fi power saving.
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(false);     // Avoid unnecessary flash/NVS writes during reconnects.
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   lastWifiBegin = millis();
 
@@ -204,6 +205,8 @@ void maintainDCCConnection() {
   unsigned long now = millis();
 
   if (!wifiUp) {
+    // A TCP socket from the previous Wi-Fi association must never be reused.
+    dccClient.stop();
     // Wi-Fi association can take several seconds. Only restart the attempt
     // occasionally, otherwise each retry cancels the one still in progress.
     if (now - lastWifiBegin >= WIFI_RETRY_INTERVAL_MS) {
@@ -230,17 +233,28 @@ bool sendDCCCommand(const char* cmd) {
   // throttle nudge used to allocate+free a String on the heap here, which
   // fragments the heap on a device left running for hours.
   char packet[48];
-  snprintf(packet, sizeof(packet), "<%s>", cmd);
+  const int packetLen = snprintf(packet, sizeof(packet), "<%s>", cmd);
+  if (packetLen <= 0 || packetLen >= (int)sizeof(packet)) {
+    Serial.println("TX ERROR: command packet too long");
+    return false;
+  }
 
   Serial.print("TX: ");
   Serial.println(packet);
 
-  // Transmit wirelessly to CSB1
-  if (dccClient.connected()) {
-    dccClient.print(packet);
-    return true;
+  // Require the entire framed command to be accepted by the TCP client.
+  // A partial frame is unsafe: close the socket and recover on a clean link.
+  if (WiFi.status() != WL_CONNECTED || !dccClient.connected()) return false;
+
+  const size_t written = dccClient.write(
+      reinterpret_cast<const uint8_t*>(packet), (size_t)packetLen);
+  if (written != (size_t)packetLen) {
+    Serial.println("TX ERROR: partial write; dropping TCP socket");
+    dccClient.stop();
+    dccLinkUp = false;
+    return false;
   }
-  return false;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -280,6 +294,7 @@ void updateLocoThrottle(uint8_t idx) {
 }
 
 void changeEngineAddress(uint8_t idx, uint16_t newAddr) {
+  if (idx >= 2 || newAddr == 0 || newAddr > 10293) return;
   sendStop(idx, engines[idx], false); // stop the loco we are about to stop controlling
   engines[idx].address = newAddr;
   engines[idx].speed = 0;
@@ -288,13 +303,14 @@ void changeEngineAddress(uint8_t idx, uint16_t newAddr) {
 }
 
 void toggleDCCFunction(uint8_t idx, uint8_t func_num) {
-  engines[idx].functions ^= (1UL << func_num);
-  bool is_on = (engines[idx].functions & (1UL << func_num)) != 0;
+  if (idx >= 2 || func_num > 28) return;
+  const uint32_t nextFunctions = engines[idx].functions ^ (1UL << func_num);
+  const bool is_on = (nextFunctions & (1UL << func_num)) != 0;
 
-  // Format: <F CAB FUNC STATE>
+  // Update the local display state only after the command was accepted.
   char cmd[32];
   snprintf(cmd, sizeof(cmd), "F %u %u %d", engines[idx].address, func_num, is_on ? 1 : 0);
-  sendDCCCommand(cmd);
+  if (sendDCCCommand(cmd)) engines[idx].functions = nextFunctions;
 }
 
 void sendEStop(uint8_t idx) {
@@ -311,12 +327,17 @@ static void sendTrackMode(bool dc) {
   } else {
     snprintf(cmd, sizeof(cmd), "= %c MAIN", DC_TRACK_LETTER);
   }
-  trackModeDirty = !sendDCCCommand(cmd);
-  if (!trackModeDirty) {
-    // DCC-EX switches track power off whenever the mode changes -- turn this track back on.
+
+  // A mode change powers the output down. Treat the mode command AND the
+  // subsequent power-on as one transaction: if either fails, retry both on
+  // the next clean connection before sending any throttle command.
+  const bool modeSent = sendDCCCommand(cmd);
+  bool powerSent = false;
+  if (modeSent) {
     snprintf(cmd, sizeof(cmd), "1 %c", DC_TRACK_LETTER);
-    sendDCCCommand(cmd);
+    powerSent = sendDCCCommand(cmd);
   }
+  trackModeDirty = !(modeSent && powerSent);
 }
 
 void enterDCMode() {
@@ -360,14 +381,38 @@ void stopAllThrottles() {
 // were made while offline, and a DC/DCC track-mode change. Stops go first, so
 // nothing is still moving when the track mode changes.
 void resyncAfterReconnect() {
+  bool emergencyStopReplayed[3] = {false, false, false};
+
+  // Stops always go first. Preserve emergency-stop semantics when replaying an
+  // offline E-stop, and do not immediately overwrite it with a normal throttle.
   for (uint8_t s = 0; s < 3; s++) {
     if (!pendingStop[s]) continue;
+    const bool wasEmergency = pendingEmergency[s];
     char cmd[32];
-    snprintf(cmd, sizeof(cmd), "t %u %d %d", pendingAddr[s], pendingEmergency[s] ? -1 : 0,
+    snprintf(cmd, sizeof(cmd), "t %u %d %d", pendingAddr[s], wasEmergency ? -1 : 0,
              pendingDirFwd[s] ? 1 : 0);
-    if (sendDCCCommand(cmd)) pendingStop[s] = false;
+    if (sendDCCCommand(cmd)) {
+      pendingStop[s] = false;
+      pendingEmergency[s] = false;
+      emergencyStopReplayed[s] = wasEmergency;
+    }
   }
-  if (!trackModeDirty) return;
-  sendTrackMode(dcModeActive);
-  if (dcModeActive) updateDCThrottle();
+
+  // If the track mode or its power restoration failed, do not send throttles
+  // until the complete mode-change sequence has succeeded.
+  if (trackModeDirty) {
+    sendTrackMode(dcModeActive);
+    if (trackModeDirty) return;
+  }
+
+  // Reassert the current throttle state after reconnect. This covers a socket
+  // drop during a packet write, where the handheld may have updated locally
+  // but the command station may not have received the complete command.
+  if (dcModeActive) {
+    if (!emergencyStopReplayed[DC_SLOT]) updateDCThrottle();
+  } else {
+    for (uint8_t e = 0; e < 2; e++) {
+      if (!emergencyStopReplayed[e]) updateLocoThrottle(e);
+    }
+  }
 }
