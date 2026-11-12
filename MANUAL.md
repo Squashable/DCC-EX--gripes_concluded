@@ -37,7 +37,7 @@ Each count from an encoder moves the speed by 2 of the 126 speed steps. How many
 
 On power-up the screen shows `Connecting to CSB1...` while the handheld joins the CSB1's Wi-Fi network (default name `DCCEX_CSB1`, waiting up to 15 seconds) and opens a connection to 192.168.4.1 on port 2560.
 
-1. **Track power.** The first successful connection after power-up switches track power on. Reconnecting later does not, so it never overrides someone who cut power on purpose.
+1. **Track power.** The handheld does not switch track power on at boot. Track power remains under the command station/operator's control. DC/DCC mode changes still restore power to the selected main track after changing its mode.
 2. **Link dot.** The dot at the top right is filled while the handheld is connected to the CSB1 and hollow when it is not.
 3. **If the link drops.** The top strip reads `NO LINK - CONTROLS NOT SENT`. Throttle, direction and function input is ignored, so the screen always matches what the layout is really doing. The locos keep running at their last speed, and the E-stop buttons cannot reach the layout until the link returns.
 4. **Reconnecting.** The handheld retries on its own: Wi-Fi every 10 seconds, the CSB1 connection every 3 seconds. Nothing needs pressing.
@@ -160,17 +160,21 @@ The firmware is in the `handheld_main` folder of the repository. Open `handheld_
 | Part | Pins |
 | --- | --- |
 | Encoder 1 | A 19, B 21, push 22 |
-| Encoder 2 | A 4, B 0, push 2 |
-| SEL1 / SEL2 buttons | 15 / 26 |
+| Encoder 2 | A 4, B 17, push 2 |
+| SEL1 / SEL2 buttons | 39 / 26 |
 | DC switch | 36 (low = DC) |
 | E-STOP 1 / 2 | 34 / 35 |
-| Keypad rows | 13, 12, 14, 27 |
+| Keypad rows | 13, 15, 14, 27 |
 | Keypad columns | 32, 33, 25 |
-| OLED (256x64, SPI) | SCK 18, MOSI 23, CS 5, DC 16, RESET 17 |
+| OLED (256x64, SPI) | SCK 18, MOSI 23, CS 5, DC 16, RESET to ESP32 EN |
 
-- Pins 34, 35 and 36 are input-only with no internal pull-up. Each needs an external 10k resistor to 3.3V.
-- Pins 0, 2, 12 and 15 affect booting if held at the wrong level at power-up. Avoid a control holding them that way.
-- Pins 16 and 17 clash with PSRAM on WROVER boards.
+- GPIO34, GPIO35, GPIO36 and GPIO39 are input-only and have no internal pull resistors. Fit an external 10k pull-up from each to 3.3V; each button/switch connects its input to GND when active.
+- GPIO12 has been removed from the keypad because its reset strap selects the ESP32 flash supply voltage. GPIO0 is no longer used by the encoder.
+- GPIO15 remains a keypad row and GPIO5 is OLED chip-select. Keep the keypad row electrically idle and OLED CS inactive/high during reset; external 10k pull-ups to 3.3V on these lines are recommended.
+- OLED RESET must be wired to the ESP32 EN/reset line (not GPIO17). GPIO17 is now encoder 2 B.
+- This pin map assumes a classic ESP32-WROOM-style board without PSRAM. GPIO16 is used by the OLED and GPIO17 by encoder 2; do not use it unchanged on an ESP32-WROVER module.
+- GPIO2 is the encoder-2 push switch. Use a normally-open switch to GND.
+- This firmware assumes the classic ESP32 module pinout, not ESP32-S2/S3/C3 variants. Verify the module marking before wiring.
 
 ### CSB1 requirements
 
