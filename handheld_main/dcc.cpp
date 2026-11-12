@@ -407,8 +407,6 @@ void stopAllThrottles() {
 // were made while offline, and a DC/DCC track-mode change. Stops go first, so
 // nothing is still moving when the track mode changes.
 void resyncAfterReconnect() {
-  bool emergencyStopReplayed[3] = {false, false, false};
-
   // Stops always go first. Preserve emergency-stop semantics when replaying an
   // offline E-stop, and do not immediately overwrite it with a normal throttle.
   for (uint8_t s = 0; s < 3; s++) {
@@ -420,7 +418,6 @@ void resyncAfterReconnect() {
     if (sendDCCCommand(cmd)) {
       pendingStop[s] = false;
       pendingEmergency[s] = false;
-      emergencyStopReplayed[s] = wasEmergency;
       if (wasEmergency) emergencyLatched[s] = true;
     }
   }
