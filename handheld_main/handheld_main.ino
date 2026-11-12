@@ -15,7 +15,7 @@ const uint8_t PIN_ENCODER_2_A = 4;
 const uint8_t PIN_ENCODER_2_B = 0;
 const uint8_t PIN_ENCODER_2_SWITCH = 2;   // Engine 2 Direction Toggle
 
-const uint8_t PIN_BUTTON_SELECT_E1 = 15;  // Route Numpad to Engine 1
+const uint8_t PIN_BUTTON_SELECT_E1 = 39;  // Input-only; requires external 10k pull-up to 3.3V
 const uint8_t PIN_BUTTON_SELECT_E2 = 26;  // Route Numpad to Engine 2
 
 // NOTE: GPIO16 is used by the OLED's PIN_OLED_DATA_COMMAND line (see ui.cpp) -- it was
@@ -32,7 +32,7 @@ const byte ROWS = 4;
 const byte COLS = 3;
 
 const uint8_t PIN_KEYPAD_ROW_1 = 13;
-const uint8_t PIN_KEYPAD_ROW_2 = 12;
+const uint8_t PIN_KEYPAD_ROW_2 = 15;  // GPIO12 removed: its reset strap can select unsafe flash voltage
 const uint8_t PIN_KEYPAD_ROW_3 = 14;
 const uint8_t PIN_KEYPAD_ROW_4 = 27;
 
@@ -104,7 +104,9 @@ void setup() {
   // Pin Modes Setup
   pinMode(PIN_ENCODER_1_SWITCH, INPUT_PULLUP);
   pinMode(PIN_ENCODER_2_SWITCH, INPUT_PULLUP);
-  pinMode(PIN_BUTTON_SELECT_E1, INPUT_PULLUP);
+  // GPIO39 is input-only and has no internal pull-up: fit an external 10k
+  // resistor from GPIO39 to 3.3V, with the select button connecting it to GND.
+  pinMode(PIN_BUTTON_SELECT_E1, INPUT);
   pinMode(PIN_BUTTON_SELECT_E2, INPUT_PULLUP);
   // GPIO34/35/36 are input-only pins with no internal pull resistor -- INPUT_PULLUP
   // here would silently do nothing. These three all need an external 10k pull-up
@@ -137,6 +139,19 @@ void setup() {
   enc2.setCount(0);
   lastEncCount[0] = 0;
   lastEncCount[1] = 0;
+
+  // DebouncedInput::begin() samples the initial level, so a button already
+  // held during boot does not generate a pressed edge. Explicitly honour
+  // held E-stop buttons once the DCC link has had its initial connection chance.
+  if (inDcToggle.state() == LOW) {
+    enterDCMode();
+  }
+  if (inEstop1.state() == LOW) {
+    if (dcModeActive) sendDCEStop(); else sendEStop(0);
+  }
+  if (inEstop2.state() == LOW) {
+    if (dcModeActive) sendDCEStop(); else sendEStop(1);
+  }
 
   renderGUI();
 }
