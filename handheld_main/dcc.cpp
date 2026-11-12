@@ -202,6 +202,7 @@ void clearProgResult() {
 // Call this once per loop() iteration. Non-blocking apart from a short, bounded
 // TCP connect attempt every RECONNECT_RETRY_INTERVAL_MS while the socket is down.
 void maintainDCCConnection() {
+  static bool socketWasUp = false;
   drainRx();
   serviceProgramming();
 
@@ -210,18 +211,21 @@ void maintainDCCConnection() {
   if (wifiUp && dccClient.connected()) {
     dccLinkUp = true;
 
-    // A recovery transaction can itself fail (e.g. a brief RF fade during
-    // the mode/power sequence). Retry only the outstanding safety work, at a
-    // bounded rate, even though the TCP socket remains connected.
+    // Resynchronise exactly once on each connection transition. If the
+    // recovery transaction itself fails, retry outstanding work at a bounded
+    // rate while the socket remains connected.
     const bool recoveryPending = trackModeDirty ||
         pendingStop[0] || pendingStop[1] || pendingStop[DC_SLOT];
-    if (recoveryPending && now - lastRecoveryAttempt >= RECOVERY_RETRY_INTERVAL_MS) {
+    if (!socketWasUp ||
+        (recoveryPending && now - lastRecoveryAttempt >= RECOVERY_RETRY_INTERVAL_MS)) {
       lastRecoveryAttempt = now;
       resyncAfterReconnect();
     }
+    socketWasUp = true;
     return;
   }
 
+  socketWasUp = false;
   dccLinkUp = false;
 
   if (!wifiUp) {
