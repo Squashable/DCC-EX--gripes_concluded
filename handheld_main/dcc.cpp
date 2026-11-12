@@ -343,6 +343,7 @@ void toggleDCCFunction(uint8_t idx, uint8_t func_num) {
 }
 
 void sendEStop(uint8_t idx) {
+  if (idx >= 2) return;
   sendEmergencyStop(idx, engines[idx]);
 }
 
